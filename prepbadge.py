@@ -200,7 +200,7 @@ def md_go_version(repo, md, owner_repo):
 def create_markdown(github):
     """ create markdown for repos in github dict
     """
-    filename = 'prepbadges'
+    filename = 'prepbadge'
     print(f'Creating markdown file {filename}.md')
     md = MdUtils(file_name=filename, title='EdgeXFoundry Repo Badges Preview')
     for repo in github[0]['result']:

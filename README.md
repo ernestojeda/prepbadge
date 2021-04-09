@@ -2,7 +2,7 @@
 
 A Python script to create a preview of all EdgeXFoundry repo badges.  
 
-Queries all non-archived non-disabled repos for organization from GitHub. Queries codecov.io for badge and coverage data. Queries Jenkins for jobs and build information. Coalesces all the data and creates markdown file to preview the badges.
+Queries all non-archived non-disabled repos for the `EdgeXFoundry` organization from GitHub. Queries codecov.io for badge and coverage data. Queries Jenkins for jobs and build information. Coalesces all the data and creates markdown file to preview the badges.
 
 
 ## `prepbadge.py`
