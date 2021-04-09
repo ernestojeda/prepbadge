@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # logging.getLogger('rest3client').setLevel(logging.CRITICAL)
 
 
+CODECOV_HOST = 'codecov.io'
 JENKINS_HOST = 'jenkins.edgexfoundry.org'
 
 
@@ -37,7 +38,7 @@ def get_github_client():
     return GitHubAPI.get_client()
 
 
-def get_github_repos(*args):
+def get_github_data(*args):
     """ return non-archived and non-disabled github repos for owner
     """
     owner = args[0]['owner']
@@ -73,7 +74,7 @@ def get_codecov_client():
     token = getenv('CC_TOKEN_PSW')
     if not token:
         raise ValueError('CC_TOKEN_PSW environment variable must be set to token')
-    return RESTclient('codecov.io', token=token)
+    return RESTclient(CODECOV_HOST, token=token)
 
 
 def get_codecov_data(*args):
@@ -106,7 +107,7 @@ def get_jenkins_client():
     password = getenv('JN_TOKEN_PSW')
     if not password:
         raise ValueError('JN_TOKEN_PSW environment variable must be set to token')
-    return RESTclient('jenkins.edgexfoundry.org', user=user, password=password)
+    return RESTclient(JENKINS_HOST, user=user, password=password)
 
 
 def get_jenkins_data(*args):
@@ -159,7 +160,7 @@ def find(items, name):
     return -1
 
 
-def coalesce(github, codecov, jenkins):
+def coalesce_data(github, codecov, jenkins):
     """ coalesce repos from codecov and jenkins into github
     """
     for item in codecov[0]['result']:
@@ -172,7 +173,7 @@ def coalesce(github, codecov, jenkins):
         index = find(github[0]['result'], repo)
         if index > -1:
             github[0]['result'][index].update(item)
-    write_file(github, 'badges')
+    # write_file(github, 'badges')
 
 
 def md_jenkins_build(repo, md):
@@ -235,13 +236,13 @@ def create_markdown(github):
     md.create_md_file()
 
 
-def run_github(owner):
-    """ run github
+def run_github_data_collection(owner):
+    """ run github data collection
     """
     print(f'Retrieving github repos for {owner}')
     process_data = [{'owner': owner}]
     MP4ansi(
-        function=get_github_repos,
+        function=get_github_data,
         process_data=process_data,
         config={
             'id_regex': r'^getting github information for (?P<value>.*) repos$',
@@ -256,8 +257,8 @@ def run_github(owner):
     return process_data
 
 
-def run_codecov(owner):
-    """ run codecov
+def run_codecov_data_collection(owner):
+    """ run codecov data collection
     """
     print(f'Retrieving codecov.io data for {owner} ...')
     process_data = [{'owner': owner}]
@@ -277,8 +278,8 @@ def run_codecov(owner):
     return process_data
 
 
-def run_jenkins(owner):
-    """ run jenkins
+def run_jenkins_data_collection(owner):
+    """ run jenkins data collection
     """
     print(f'Retrieving jenkins data for {owner} ...')
     process_data = [{'owner': owner}]
@@ -302,10 +303,10 @@ def main(owner):
     """ main function
     """
     configure_logging()
-    github_data = run_github(owner)
-    codecov_data = run_codecov(owner)
-    jenkins_data = run_jenkins(owner)
-    coalesce(github_data, codecov_data, jenkins_data)
+    github_data = run_github_data_collection(owner)
+    codecov_data = run_codecov_data_collection(owner)
+    jenkins_data = run_jenkins_data_collection(owner)
+    coalesce_data(github_data, codecov_data, jenkins_data)
     create_markdown(github_data)
 
 
