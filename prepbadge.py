@@ -6,7 +6,7 @@ from time import sleep
 from rest3client import RESTclient 
 from github3api import GitHubAPI
 from mp4ansi import MP4ansi
-from requests.exceptions import HTTPError
+from mdutils import MdUtils
 
 logger = logging.getLogger(__name__)
 # logging.getLogger('rest3client').setLevel(logging.CRITICAL)
@@ -87,7 +87,8 @@ def get_codecov_data(*args):
         data.append({
             'repo': repo['name'],
             'codecov_coverage': repo['coverage'],
-            'codecov_badge': f"https://{client.hostname}/gh/{owner}/{repo['name']}/branch/master/graph/badge.svg?token={settings['repo']['image_token']}"
+            'codecov_badge': f"https://{client.hostname}/gh/{owner}/{repo['name']}/branch/master/graph/badge.svg?token={settings['repo']['image_token']}",
+            'codecov_url': f"https://codecov.io/gh/{owner}/{repo['name']}"
         })
     return data
 
@@ -120,8 +121,8 @@ def get_jenkins_data(*args):
         logger.debug(f"retrieving jenkins data for {repo} repo")
         data.append({
             'repo': repo,
-            'jenkins_badge': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/badge/icon',
-            'jenkins_build': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/'
+            'jenkins_badge': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/badge/icon'.replace(" ", "%20"),
+            'jenkins_url': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/'.replace(" ", "%20")
         })
     return data
 
@@ -142,6 +143,81 @@ def check_result(process_data):
         raise Exception('one or more processes had errors - check logfile for more information')
 
 
+def find(items, name):
+    """ return index of item with name in items
+    """
+    for index, item in enumerate(items):
+        if item['name'] == name:
+            return index
+    logger.warn(f'no item with name {name} in target list')
+
+
+def coalesce(github, codecov, jenkins):
+    """ coalesce repos from codecov and jenkins into github
+    """
+    for item in codecov[0]['result']:
+        repo = item.pop('repo')
+        index = find(github[0]['result'], repo)
+        if index:
+            github[0]['result'][index].update(item)
+    for item in jenkins[0]['result']:
+        repo = item.pop('repo')
+        index = find(github[0]['result'], repo)
+        if index:
+            github[0]['result'][index].update(item)
+    write_file(github, 'badges')
+
+
+def md_jenkins_build(repo, md):
+    """ add jenkins build badge to md
+    """
+    if 'jenkings_badge' in repo:
+        md.new_line(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_build']})")
+
+
+def md_code_coverage(repo, md):
+    """ add code coverage badge to md
+    """
+    if 'codecov_badge' in repo:
+        md.new_line(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']})")
+
+
+def md_go_report_card(repo, md):
+    """ add go report card badge to md
+    """
+    if repo['is_go_based']:
+        md.new_line(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']})")
+
+
+def md_go_version(repo, md, owner_repo):
+    """ add go version badge to md
+    """
+    if repo['is_go_based']:
+        md.new_line(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{owner_repo})")
+
+
+def create_markdown(github):
+    """ create markdown for repos in github dict
+    """
+    filename = 'prepbadges'
+    print(f'Creating markdown file {filename}.md')
+    md = MdUtils(file_name=filename, title='EdgeXFoundry Repo Badges Preview')
+    for repo in github[0]['result']:
+        owner_repo = repo['github_location'].replace('github.com/', '')
+        md.new_header(level=1, title=repo['name'])
+        md_jenkins_build(repo, md)
+        md_code_coverage(repo, md)
+        md_go_report_card(repo, md)
+        md.new_line(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags)")
+        md.new_line(f"![GitHub License](https://img.shields.io/github/license/{owner_repo})")
+        md_go_version(repo, md, owner_repo)
+        md.new_line(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo})")
+        md.new_line(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo})")
+        md.new_line(f"![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{owner_repo})")
+        md.new_line("")
+    md.create_md_file()
+
+
 def main(owner):
     """ main function
     """
@@ -160,7 +236,7 @@ def main(owner):
             }
         }).execute()
     check_result(gh_process_data)
-    write_file(gh_process_data, 'github')
+    # write_file(gh_process_data, 'github')
 
     print(f'Retrieving codecov.io data for {owner} ...')
     cc_process_data = [{'owner': owner}]
@@ -176,7 +252,7 @@ def main(owner):
             }
         }).execute()
     check_result(cc_process_data)
-    write_file(cc_process_data, 'codecov')
+    # write_file(cc_process_data, 'codecov')
 
     print(f'Retrieving jenkins data for {owner} ...')
     jn_process_data = [{'owner': owner}]
@@ -192,7 +268,10 @@ def main(owner):
             }
         }).execute()
     check_result(jn_process_data)
-    write_file(jn_process_data, 'jenkins')
+    # write_file(jn_process_data, 'jenkins')
+
+    coalesce(gh_process_data, cc_process_data, jn_process_data)
+    create_markdown(gh_process_data)
 
 
 if __name__ == '__main__':
