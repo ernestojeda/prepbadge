@@ -44,7 +44,7 @@ def get_github_repos(*args):
     logger.debug(f'getting github information for {owner} repos')
     repos = []
     client = get_github_client()
-    all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'archived', 'disabled', 'languages_url', 'svn_url'])
+    all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'archived', 'disabled', 'languages_url', 'svn_url', 'html_url'])
     attributes = {'archived': False, 'disabled': False}
     logger.debug(f'{owner} has a total of {len(all_repos)} matching repos in github')
     for repo in all_repos:
@@ -58,6 +58,7 @@ def get_github_repos(*args):
             repos.append({
                 'name': repo['name'],
                 'github_location': repo['svn_url'].replace('https://', ''),
+                'github_url': repo['html_url'],
                 'is_go_based': True if languages.get('Go') else False
             })
     return repos
@@ -171,29 +172,29 @@ def coalesce(github, codecov, jenkins):
 def md_jenkins_build(repo, md):
     """ add jenkins build badge to md
     """
-    if 'jenkings_badge' in repo:
-        md.new_line(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_build']})")
+    if 'jenkins_badge' in repo:
+        md.write(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_url']})")
 
 
 def md_code_coverage(repo, md):
     """ add code coverage badge to md
     """
     if 'codecov_badge' in repo:
-        md.new_line(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']})")
+        md.write(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']})")
 
 
 def md_go_report_card(repo, md):
     """ add go report card badge to md
     """
     if repo['is_go_based']:
-        md.new_line(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']})")
+        md.write(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']})")
 
 
 def md_go_version(repo, md, owner_repo):
     """ add go version badge to md
     """
     if repo['is_go_based']:
-        md.new_line(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{owner_repo})")
+        md.write(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{owner_repo})")
 
 
 def create_markdown(github):
@@ -204,16 +205,16 @@ def create_markdown(github):
     md = MdUtils(file_name=filename, title='EdgeXFoundry Repo Badges Preview')
     for repo in github[0]['result']:
         owner_repo = repo['github_location'].replace('github.com/', '')
-        md.new_header(level=1, title=repo['name'])
+        md.new_header(level=1, title=md.new_inline_link(link=repo['github_url'], text=repo['name']))
         md_jenkins_build(repo, md)
         md_code_coverage(repo, md)
         md_go_report_card(repo, md)
-        md.new_line(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags)")
-        md.new_line(f"![GitHub License](https://img.shields.io/github/license/{owner_repo})")
+        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags)")
+        md.write(f"![GitHub License](https://img.shields.io/github/license/{owner_repo})")
         md_go_version(repo, md, owner_repo)
-        md.new_line(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo})")
-        md.new_line(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo})")
-        md.new_line(f"![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{owner_repo})")
+        md.write(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo})")
+        md.write(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo})")
+        md.write(f"![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{owner_repo})")
         md.new_line("")
     md.create_md_file()
 
