@@ -173,28 +173,28 @@ def md_jenkins_build(repo, md):
     """ add jenkins build badge to md
     """
     if 'jenkins_badge' in repo:
-        md.write(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_url']})")
+        md.write(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_url']}) ")
 
 
 def md_code_coverage(repo, md):
     """ add code coverage badge to md
     """
     if 'codecov_badge' in repo:
-        md.write(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']})")
+        md.write(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']}) ")
 
 
 def md_go_report_card(repo, md):
     """ add go report card badge to md
     """
     if repo['is_go_based']:
-        md.write(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']})")
+        md.write(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']}) ")
 
 
 def md_go_version(repo, md, owner_repo):
     """ add go version badge to md
     """
     if repo['is_go_based']:
-        md.write(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{owner_repo})")
+        md.write(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{owner_repo}) ")
 
 
 def create_markdown(github):
@@ -209,25 +209,24 @@ def create_markdown(github):
         md_jenkins_build(repo, md)
         md_code_coverage(repo, md)
         md_go_report_card(repo, md)
-        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags)")
-        md.write(f"![GitHub License](https://img.shields.io/github/license/{owner_repo})")
+        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags) ")
+        md.write(f"![GitHub License](https://img.shields.io/github/license/{owner_repo}) ")
         md_go_version(repo, md, owner_repo)
-        md.write(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo})")
-        md.write(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo})")
-        md.write(f"![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{owner_repo})")
+        md.write(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo}) ")
+        md.write(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo}) ")
+        md.write(f"![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{owner_repo}) ")
         md.new_line("")
     md.create_md_file()
 
 
-def main(owner):
-    """ main function
+def run_github(owner):
+    """ run github
     """
-    configure_logging()
     print(f'Retrieving github repos for {owner}')
-    gh_process_data = [{'owner': owner}]
+    process_data = [{'owner': owner}]
     MP4ansi(
         function=get_github_repos,
-        process_data=gh_process_data,
+        process_data=process_data,
         config={
             'id_regex': r'^getting github information for (?P<value>.*) repos$',
             'progress_bar': {
@@ -236,14 +235,19 @@ def main(owner):
                 'progress_message': 'Retrieval of github.com repos complete'
             }
         }).execute()
-    check_result(gh_process_data)
-    # write_file(gh_process_data, 'github')
+    check_result(process_data)
+    # write_file(process_data, 'github')
+    return process_data
 
+
+def run_codecov(owner):
+    """ run codecov
+    """
     print(f'Retrieving codecov.io data for {owner} ...')
-    cc_process_data = [{'owner': owner}]
+    process_data = [{'owner': owner}]
     MP4ansi(
         function=get_codecov_data,
-        process_data=cc_process_data,
+        process_data=process_data,
         config={
             'id_regex': r'^getting codecov information for (?P<value>.*) repos$',
             'progress_bar': {
@@ -252,14 +256,19 @@ def main(owner):
                 'progress_message': 'Retrieval of codecov.io data complete'
             }
         }).execute()
-    check_result(cc_process_data)
-    # write_file(cc_process_data, 'codecov')
+    check_result(process_data)
+    # write_file(process_data, 'codecov')
+    return process_data
 
+
+def run_jenkins(owner):
+    """ run jenkins
+    """
     print(f'Retrieving jenkins data for {owner} ...')
-    jn_process_data = [{'owner': owner}]
+    process_data = [{'owner': owner}]
     MP4ansi(
         function=get_jenkins_data,
-        process_data=jn_process_data,
+        process_data=process_data,
         config={
             'id_regex': r'^getting jenkins information for (?P<value>.*) repos$',
             'progress_bar': {
@@ -268,11 +277,20 @@ def main(owner):
                 'progress_message': 'Retrieval of jenkins data complete'
             }
         }).execute()
-    check_result(jn_process_data)
-    # write_file(jn_process_data, 'jenkins')
+    check_result(process_data)
+    # write_file(process_data, 'jenkins')
+    return process_data
 
-    coalesce(gh_process_data, cc_process_data, jn_process_data)
-    create_markdown(gh_process_data)
+
+def main(owner):
+    """ main function
+    """
+    configure_logging()
+    github_data = run_github(owner)
+    codecov_data = run_codecov(owner)
+    jenkins_data = run_jenkins(owner)
+    coalesce(github_data, codecov_data, jenkins_data)
+    create_markdown(github_data)
 
 
 if __name__ == '__main__':
