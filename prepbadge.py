@@ -44,7 +44,7 @@ def get_github_repos(*args):
     logger.debug(f'getting github information for {owner} repos')
     repos = []
     client = get_github_client()
-    all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'archived', 'disabled', 'languages_url', 'svn_url', 'html_url'])
+    all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'archived', 'disabled', 'languages_url', 'svn_url', 'html_url', 'license', 'tags_url'])
     attributes = {'archived': False, 'disabled': False}
     logger.debug(f'{owner} has a total of {len(all_repos)} matching repos in github')
     for repo in all_repos:
@@ -53,13 +53,16 @@ def get_github_repos(*args):
         match_attributes = all(repo[key] == value for key, value in attributes.items() if key in repo)
         if match_attributes:
             logger.debug(f"checking language for {repo['name']}")
-            endpoint = repo['languages_url'].replace(f'https://{client.hostname}', '')
-            languages = client.get(endpoint)
+            languages = client.get(repo['languages_url'].replace(f'https://{client.hostname}', ''))
+            logger.debug(f"checking tags for {repo['name']}")
+            tags = client.get(repo['tags_url'].replace(f'https://{client.hostname}', ''))
             repos.append({
                 'name': repo['name'],
                 'github_location': repo['svn_url'].replace('https://', ''),
                 'github_url': repo['html_url'],
-                'is_go_based': True if languages.get('Go') else False
+                'is_go_based': True if languages.get('Go') else False,
+                'has_license': not repo['license'] is None,
+                'has_tags': len(tags) > 1
             })
     return repos
 
@@ -113,18 +116,20 @@ def get_jenkins_data(*args):
     logger.debug(f'getting jenkins information for {owner} repos')
     data = []
     client = get_jenkins_client()
-    jobs = client.get(f'/job/{owner}/api/json?tree=displayName,name,url,jobs[name,url]')
+    jobs = client.get(f'/job/{owner}/api/json?tree=displayName,name,url,jobs[name,url,jobs[name,url,buildable]]')
     logger.debug(f"{owner} has a total of {len(jobs['jobs'])} repos registered in jenkins")
     display_name = jobs['displayName']
     for job in jobs['jobs']:
         sleep(.05)
         repo = job['name']
         logger.debug(f"retrieving jenkins data for {repo} repo")
-        data.append({
-            'repo': repo,
-            'jenkins_badge': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/badge/icon'.replace(" ", "%20"),
-            'jenkins_url': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/'.replace(" ", "%20")
-        })
+        index = find(job['jobs'], 'master')
+        if index > -1:
+            data.append({
+                'repo': repo,
+                'jenkins_badge': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/badge/icon'.replace(" ", "%20"),
+                'jenkins_url': f'https://{JENKINS_HOST}/view/{display_name}/job/{owner}/job/{repo}/job/master/'.replace(" ", "%20")
+            })
     return data
 
 
@@ -151,6 +156,7 @@ def find(items, name):
         if item['name'] == name:
             return index
     logger.warn(f'no item with name {name} in target list')
+    return -1
 
 
 def coalesce(github, codecov, jenkins):
@@ -159,12 +165,12 @@ def coalesce(github, codecov, jenkins):
     for item in codecov[0]['result']:
         repo = item.pop('repo')
         index = find(github[0]['result'], repo)
-        if index:
+        if index > -1:
             github[0]['result'][index].update(item)
     for item in jenkins[0]['result']:
         repo = item.pop('repo')
         index = find(github[0]['result'], repo)
-        if index:
+        if index > -1:
             github[0]['result'][index].update(item)
     write_file(github, 'badges')
 
@@ -190,6 +196,16 @@ def md_go_report_card(repo, md):
         md.write(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']}) ")
 
 
+def md_tags(repo, md, owner_repo):
+    if repo['has_tags']:
+        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags) ")
+
+
+def md_license(repo, md, owner_repo):
+    if repo['has_license']:
+        md.write(f"![GitHub License](https://img.shields.io/github/license/{owner_repo}) ")
+
+
 def md_go_version(repo, md, owner_repo):
     """ add go version badge to md
     """
@@ -209,8 +225,8 @@ def create_markdown(github):
         md_jenkins_build(repo, md)
         md_code_coverage(repo, md)
         md_go_report_card(repo, md)
-        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags) ")
-        md.write(f"![GitHub License](https://img.shields.io/github/license/{owner_repo}) ")
+        md_tags(repo, md, owner_repo)
+        md_license(repo, md, owner_repo)
         md_go_version(repo, md, owner_repo)
         md.write(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo}) ")
         md.write(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo}) ")
