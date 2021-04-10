@@ -9,7 +9,6 @@ from mp4ansi import MP4ansi
 from mdutils import MdUtils
 
 logger = logging.getLogger(__name__)
-# logging.getLogger('rest3client').setLevel(logging.CRITICAL)
 
 
 CODECOV_HOST = 'codecov.io'
@@ -22,7 +21,7 @@ def configure_logging():
     rootLogger = logging.getLogger()
     # must be set to this level so handlers can filter from this level
     rootLogger.setLevel(logging.DEBUG)
-    file_handler = logging.FileHandler('codecov.log')
+    file_handler = logging.FileHandler('prepbadge.log')
     file_formatter = logging.Formatter("%(asctime)s %(processName)s [%(funcName)s] %(levelname)s %(message)s")
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(logging.DEBUG)
@@ -50,7 +49,7 @@ def get_github_data(*args):
     logger.debug(f'{owner} has a total of {len(all_repos)} matching repos in github')
     for repo in all_repos:
         logger.debug(f"checking repo {repo['name']}")
-        sleep(.05)
+        sleep(.01)
         match_attributes = all(repo[key] == value for key, value in attributes.items() if key in repo)
         if match_attributes:
             logger.debug(f"checking language for {repo['name']}")
@@ -121,7 +120,7 @@ def get_jenkins_data(*args):
     logger.debug(f"{owner} has a total of {len(jobs['jobs'])} repos registered in jenkins")
     display_name = jobs['displayName']
     for job in jobs['jobs']:
-        sleep(.05)
+        sleep(.01)
         repo = job['name']
         logger.debug(f"retrieving jenkins data for {repo} repo")
         index = find(job['jobs'], 'master')
