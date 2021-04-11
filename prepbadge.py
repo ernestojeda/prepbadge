@@ -44,12 +44,12 @@ def get_github_data(*args):
     logger.debug(f'getting github information for {owner} repos')
     repos = []
     client = get_github_client()
-    all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'archived', 'disabled', 'languages_url', 'svn_url', 'html_url', 'license', 'tags_url'])
+    all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'full_name', 'archived', 'disabled', 'languages_url', 'html_url', 'license', 'tags_url'])
     attributes = {'archived': False, 'disabled': False}
     logger.debug(f'{owner} has a total of {len(all_repos)} matching repos in github')
     for repo in all_repos:
         logger.debug(f"checking repo {repo['name']}")
-        sleep(.01)
+        sleep(.02)
         match_attributes = all(repo[key] == value for key, value in attributes.items() if key in repo)
         if match_attributes:
             logger.debug(f"checking language for {repo['name']}")
@@ -58,7 +58,8 @@ def get_github_data(*args):
             tags = client.get(repo['tags_url'].replace(f'https://{client.hostname}', ''))
             repos.append({
                 'name': repo['name'],
-                'github_location': repo['svn_url'].replace('https://', ''),
+                'owner_repo': repo['full_name'],
+                'github_location': repo['html_url'].replace('https://', ''),
                 'github_url': repo['html_url'],
                 'is_go_based': True if languages.get('Go') else False,
                 'has_license': not repo['license'] is None,
@@ -120,7 +121,7 @@ def get_jenkins_data(*args):
     logger.debug(f"{owner} has a total of {len(jobs['jobs'])} repos registered in jenkins")
     display_name = jobs['displayName']
     for job in jobs['jobs']:
-        sleep(.01)
+        sleep(.02)
         repo = job['name']
         logger.debug(f"retrieving jenkins data for {repo} repo")
         index = find(job['jobs'], 'master')
@@ -196,21 +197,21 @@ def md_go_report_card(repo, md):
         md.write(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']}) ")
 
 
-def md_tags(repo, md, owner_repo):
+def md_tags(repo, md):
     if repo['has_tags']:
-        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{owner_repo}?include_prereleases&sort=semver&label=latest)](https://{repo['github_location']}/tags) ")
+        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{repo['owner_repo']}?include_prereleases&sort=semver&label=latest)]({repo['github_url']}/tags) ")
 
 
-def md_license(repo, md, owner_repo):
+def md_license(repo, md):
     if repo['has_license']:
-        md.write(f"![GitHub License](https://img.shields.io/github/license/{owner_repo}) ")
+        md.write(f"[![GitHub License](https://img.shields.io/github/license/{repo['owner_repo']})](https://choosealicense.com/licenses/apache-2.0/) ")
 
 
-def md_go_version(repo, md, owner_repo):
+def md_go_version(repo, md):
     """ add go version badge to md
     """
     if repo['is_go_based']:
-        md.write(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{owner_repo}) ")
+        md.write(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{repo['owner_repo']}) ")
 
 
 def create_markdown(github):
@@ -220,17 +221,16 @@ def create_markdown(github):
     print(f'Creating markdown file {filename}.md')
     md = MdUtils(file_name=filename, title='EdgeXFoundry Repo Badges Preview')
     for repo in github[0]['result']:
-        owner_repo = repo['github_location'].replace('github.com/', '')
         md.new_header(level=1, title=md.new_inline_link(link=repo['github_url'], text=repo['name']))
         md_jenkins_build(repo, md)
         md_code_coverage(repo, md)
         md_go_report_card(repo, md)
-        md_tags(repo, md, owner_repo)
-        md_license(repo, md, owner_repo)
-        md_go_version(repo, md, owner_repo)
-        md.write(f"![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{owner_repo}) ")
-        md.write(f"![GitHub Contributors](https://img.shields.io/github/contributors/{owner_repo}) ")
-        md.write(f"![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{owner_repo}) ")
+        md_tags(repo, md)
+        md_license(repo, md)
+        md_go_version(repo, md)
+        md.write(f"[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{repo['owner_repo']})]({repo['github_url']}/pulls) ")
+        md.write(f"[![GitHub Contributors](https://img.shields.io/github/contributors/{repo['owner_repo']})]({repo['github_url']}/contributors) ")
+        md.write(f"[![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{repo['owner_repo']})]({repo['github_url']}/commits) ")
         md.new_line("")
     md.create_md_file()
 
