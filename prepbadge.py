@@ -143,13 +143,6 @@ def write_file(process_data, name):
         print(f'{name} report written to {filename}')
 
 
-def check_result(process_data):
-    """ raise exception if any result in process data is exception
-    """
-    if any([isinstance(process.get('result'), Exception) for process in process_data]):
-        raise Exception('one or more processes had errors - check logfile for more information')
-
-
 def find(items, name):
     """ return index of item with name in items
     """
@@ -176,63 +169,41 @@ def coalesce_data(github, codecov, jenkins):
     # write_file(github, 'badges')
 
 
-def md_jenkins_build(repo, md):
-    """ add jenkins build badge to md
-    """
-    if 'jenkins_badge' in repo:
-        md.write(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_url']}) ")
-
-
-def md_code_coverage(repo, md):
-    """ add code coverage badge to md
-    """
-    if 'codecov_badge' in repo:
-        md.write(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']}) ")
-
-
-def md_go_report_card(repo, md):
-    """ add go report card badge to md
-    """
-    if repo['is_go_based']:
-        md.write(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']}) ")
-
-
-def md_tags(repo, md):
-    if repo['has_tags']:
-        md.write(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{repo['owner_repo']}?include_prereleases&sort=semver&label=latest)]({repo['github_url']}/tags) ")
-
-
-def md_license(repo, md):
-    if repo['has_license']:
-        md.write(f"[![GitHub License](https://img.shields.io/github/license/{repo['owner_repo']})](https://choosealicense.com/licenses/apache-2.0/) ")
-
-
-def md_go_version(repo, md):
-    """ add go version badge to md
-    """
-    if repo['is_go_based']:
-        md.write(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{repo['owner_repo']}) ")
-
-
-def create_markdown(github):
+def create_markdown(github, owner):
     """ create markdown for repos in github dict
     """
     filename = 'prepbadge'
-    print(f'Creating markdown file {filename}.md')
+    print(f'Creating markdown file for {owner} repos in {filename}.md')
     md = MdUtils(file_name=filename, title='EdgeXFoundry Repo Badges Preview')
     for repo in github[0]['result']:
         md.new_header(level=1, title=md.new_inline_link(link=repo['github_url'], text=repo['name']))
-        md_jenkins_build(repo, md)
-        md_code_coverage(repo, md)
-        md_go_report_card(repo, md)
-        md_tags(repo, md)
-        md_license(repo, md)
-        md_go_version(repo, md)
-        md.write(f"[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{repo['owner_repo']})]({repo['github_url']}/pulls) ")
-        md.write(f"[![GitHub Contributors](https://img.shields.io/github/contributors/{repo['owner_repo']})]({repo['github_url']}/contributors) ")
-        md.write(f"[![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{repo['owner_repo']})]({repo['github_url']}/commits) ")
-        md.new_line("")
+        for badge in repo['badges']:
+            md.write(f'{badge} ')
+        md.new_line('')
     md.create_md_file()
+
+
+def add_badges(github, owner):
+    """ add badge data to github dict
+    """
+    print(f'Adding badges for {owner} repos')
+    for repo in github[0]['result']:
+        repo['badges'] = []
+        if 'jenkins_badge' in repo:
+            repo['badges'].append(f"[![Build Status]({repo['jenkins_badge']})]({repo['jenkins_url']})")
+        if 'codecov_badge' in repo:
+            repo['badges'].append(f"[![Code Coverage]({repo['codecov_badge']})]({repo['codecov_url']})")
+        if repo['is_go_based']:
+            repo['badges'].append(f"[![Go Report Card](https://goreportcard.com/badge/{repo['github_location']})](https://goreportcard.com/report/{repo['github_location']})")
+        if repo['has_tags']:
+            repo['badges'].append(f"[![GitHub Tag)](https://img.shields.io/github/v/tag/{repo['owner_repo']}?include_prereleases&sort=semver&label=latest)]({repo['github_url']}/tags)")
+        if repo['has_license']:
+            repo['badges'].append(f"[![GitHub License](https://img.shields.io/github/license/{repo['owner_repo']})](https://choosealicense.com/licenses/apache-2.0/)")
+        if repo['is_go_based']:
+            repo['badges'].append(f"![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/{repo['owner_repo']})")
+        repo['badges'].append(f"[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{repo['owner_repo']})]({repo['github_url']}/pulls)")
+        repo['badges'].append(f"[![GitHub Contributors](https://img.shields.io/github/contributors/{repo['owner_repo']})]({repo['github_url']}/contributors)")
+        repo['badges'].append(f"[![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{repo['owner_repo']})]({repo['github_url']}/commits)")
 
 
 def run_github_data_collection(owner):
@@ -250,8 +221,7 @@ def run_github_data_collection(owner):
                 'count_regex': r'^checking repo (?P<value>.*)$',
                 'progress_message': 'Retrieval of github.com repos complete'
             }
-        }).execute()
-    check_result(process_data)
+        }).execute(raise_if_error=True)
     # write_file(process_data, 'github')
     return process_data
 
@@ -271,8 +241,7 @@ def run_codecov_data_collection(owner):
                 'count_regex': r'^retrieving codecov data for (?P<value>.*) repo$',
                 'progress_message': 'Retrieval of codecov.io data complete'
             }
-        }).execute()
-    check_result(process_data)
+        }).execute(raise_if_error=True)
     # write_file(process_data, 'codecov')
     return process_data
 
@@ -292,8 +261,7 @@ def run_jenkins_data_collection(owner):
                 'count_regex': r'^retrieving jenkins data for (?P<value>.*) repo$',
                 'progress_message': 'Retrieval of jenkins data complete'
             }
-        }).execute()
-    check_result(process_data)
+        }).execute(raise_if_error=True)
     # write_file(process_data, 'jenkins')
     return process_data
 
@@ -306,7 +274,8 @@ def main(owner):
     codecov_data = run_codecov_data_collection(owner)
     jenkins_data = run_jenkins_data_collection(owner)
     coalesce_data(github_data, codecov_data, jenkins_data)
-    create_markdown(github_data)
+    add_badges(github_data, owner)
+    create_markdown(github_data, owner)
 
 
 if __name__ == '__main__':
