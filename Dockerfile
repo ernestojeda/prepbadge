@@ -6,6 +6,7 @@ WORKDIR /prepbadge
 
 COPY . /prepbadge/
 
+RUN apk add git gnupg --no-cache
 RUN pip install rest3client
 RUN pip install github3api
 RUN pip install mp4ansi

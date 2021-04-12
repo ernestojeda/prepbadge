@@ -295,12 +295,12 @@ def main(owner):
     github.create_fork(client, owner_repo, user)
     print('Creating commit')
     github.create_commit(client, user_repo, badges)
-    print('Creating pull request')
-    pull_number = github.create_pull_request(client, owner_repo, user)
-    print('Verifying pull request')
-    github.verify_pull_request(client, owner_repo, pull_number)
-    print('Add reviewers to pull request')
-    github.update_pull_request(client, owner_repo, pull_number, reviewers)
+    # print('Creating pull request')
+    # pull_number = github.create_pull_request(client, owner_repo, user)
+    # print('Verifying pull request')
+    # github.verify_pull_request(client, owner_repo, pull_number)
+    # print('Add reviewers to pull request')
+    # github.update_pull_request(client, owner_repo, pull_number, reviewers)
 
 
 if __name__ == '__main__':

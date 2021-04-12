@@ -1,7 +1,9 @@
 import re
 import base64
 import logging
+import subprocess
 from time import sleep
+from datetime import datetime
 from requests.exceptions import HTTPError
 
 logger = logging.getLogger(__name__)
@@ -130,13 +132,21 @@ def create_commit(client, user_repo, badges):
 
         # create new commit for the updated tree
         logger.debug(f'creating new commit for {user_repo}')
-        new_commit = client.post(
-            f'/repos/{user_repo}/git/commits',
-            json={
-                'message': 'Add badges to README',
-                'tree': updated_tree['sha'],
-                'parents': [current_branch['commit']['sha']]
-            })
+        commit_payload = {
+            'message': 'Add badges to README',
+            'tree': updated_tree['sha'],
+            'parents': [current_branch['commit']['sha']],
+            'author': {
+                'name': 'Emilio Reyes',
+                'email': 'soda480@gmail.com'
+            },
+            'committer': {
+                'name': 'Emilio Reyes',
+                'email': 'soda480@gmail.com'
+            }
+        }
+        add_signature(commit_payload, user_repo)
+        new_commit = client.post(f'/repos/{user_repo}/git/commits', json=commit_payload)
 
         # point branch to new commit
         logger.debug(f'pointing {user_repo} master branch to new commit')
@@ -208,3 +218,31 @@ def update_readme(client, current_tree, user_repo, badges):
     current_tree[index_blob]['url'] = new_blob['url']
     current_tree[index_blob]['size'] = new_blob['size']
     current_tree[index_blob]['sha'] = new_blob['sha']
+
+
+def add_signature(payload, user_repo):
+    """ add pgp signature of payload to payload
+    """
+    logger.debug('adding signature to payload')
+    repo = user_repo.split('/')[1]
+    now = datetime.now()
+    payload_date = now.isoformat('T', 'seconds') + 'Z'
+    write_date = str(now.timestamp()).split('.')[0] + ' -0700'
+    with open(f'commit-{repo}', 'w') as outfile:
+        outfile.write(f"tree {payload['tree']}\n")
+        outfile.write(f"parent {payload['parents'][0]}\n")
+        outfile.write(f"author {payload['author']['name']} <{payload['author']['email']}> {write_date}\n")
+        outfile.write(f"committer {payload['committer']['name']} <{payload['committer']['email']}> {write_date}\n")
+        outfile.write(f"{payload['message']}")
+    command = f'gpg --clear-sign --digest-algo SHA1 --armor commit-{repo}'
+    logger.debug(f'executing command: {command}')
+    subprocess.call(command.split())
+    with open(f'commit-{repo}.asc', 'r') as infile:
+        content = infile.read()
+    contents = content.split('\n')
+    index = contents.index('-----BEGIN PGP SIGNATURE-----')
+    signature = '\n'.join(contents[index:])
+    payload['signature'] = signature
+    payload['author']['date'] = payload_date
+    payload['committer']['date'] = payload_date
+    logger.debug(f'signature: {signature}')
