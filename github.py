@@ -105,7 +105,7 @@ def update_pull_request(client, owner_repo, pull_number, reviewers):
         })
 
 
-def create_commit(client, user_repo, badges):
+def create_commit2(client, user_repo, badges):
     """ create commit for update readme change
     """
     try:
@@ -177,7 +177,7 @@ def get_heading_index(first_line, repo):
     return found_index
 
 
-def update_readme(client, current_tree, user_repo, badges):
+def update_readme2(client, current_tree, user_repo, badges):
     """ update readme with badges
     """
     logger.debug('updating README.md with badge info')
@@ -246,3 +246,38 @@ def add_signature(payload, user_repo):
     payload['author']['date'] = payload_date
     payload['committer']['date'] = payload_date
     logger.debug(f'signature: {signature}')
+
+
+def update_readme(badges, filename):
+    """ update readme with badges
+    """
+    logger.debug(f'updating {filename} with badges')
+    with open(filename, 'r') as infile:
+        contents = infile.readlines()
+    index = get_heading_index(contents[0], repo)
+    contents.insert(index + 1, badges)
+    with open(filename, 'w') as outfile:
+        outfile.writelines(contents)
+
+
+def create_commit(repo, repo_url, badges):
+    """ execute steps to clone update commit and push changes on repo
+    """
+    working_dir = '/prebadge/github.com'
+    command = f'mkdir -p {working_dir}'
+    subprocess.run(command)
+
+    command = f'git clone {repo_url}'
+    logger.debug(f'{command} [{working_dir}]')
+    subprocess.run(command, cwd=working_dir)
+
+    working_dir = f'{working_dir}/{repo}'
+    update_readme(badges, f'{working_dir}/README.md')
+
+    command = f"git commit -am 'Add badges to readme' -s"
+    logger.debug(f'{command} [{working_dir}]')
+    subprocess.run(command, cwd=working_dir)
+
+    command = 'git push origin master'
+    logger.debug(f'{command} [{workingdir}]')
+    subprocess.run(command, cwd=working_dir)
