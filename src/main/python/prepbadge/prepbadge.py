@@ -222,7 +222,7 @@ def add_badges(github, owner):
         repo['badges'].append(f"[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{repo['owner_repo']})]({repo['github_url']}/pulls)")
         repo['badges'].append(f"[![GitHub Contributors](https://img.shields.io/github/contributors/{repo['owner_repo']})]({repo['github_url']}/contributors)")
         repo['badges'].append(f"[![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{repo['owner_repo']})]({repo['github_url']}/commits)")
-    # write_file(github, 'badges')
+    write_file(github, 'badges')
 
 
 def run_github_data_collection(owner):
@@ -297,9 +297,11 @@ def get_process_data_for_pull_request_workflows(repos_data, repos_regex):
         if match:
             item = {
                 'owner_repo': repo_data['owner_repo'],
-                'reviewers': [],
+                'badges': repo_data['badges'],
                 # 'reviewers': ['bill-mahoney', 'ernestojeda', 'jamesrgregg', 'cjoyv']
-                'badges': repo_data['badges']
+                'reviewers': [],
+                'labels': ['documentation'],
+                'milestone': 'Ireland'
             }
             process_data.append(item)
     return process_data
@@ -317,11 +319,11 @@ def run_create_pull_request_workflows(owner, repos_data, repos_regex):
             'id_regex': fr'^creating pull request workflow for {owner}/(?P<value>.*)$',
             'id_justify': True,
             'id_width': 23,
-            'progress_bar': {
-                'total': r'^pull request workflow has a total of (?P<value>\d+) steps$',
-                'count_regex': r'^executing step (?P<value>-) .*$',
-                'progress_message': 'Pull request workflow complete'
-            }
+            # 'progress_bar': {
+            #     'total': r'^pull request workflow has a total of (?P<value>\d+) steps$',
+            #     'count_regex': r'^executing step (?P<value>-) .*$',
+            #     'progress_message': 'Pull request workflow complete'
+            # }
         }).execute(raise_if_error=True)
 
 

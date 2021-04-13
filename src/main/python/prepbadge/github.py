@@ -1,6 +1,7 @@
 import re
 import base64
 import logging
+import random
 import subprocess
 import os.path
 from os import getenv
@@ -274,53 +275,76 @@ def add_signature(payload, user_repo):
     logger.debug(f'signature: {signature}')
 
 
+def get_readme(working_dir):
+    """ return tuple of readme.md path and boolean if it exists
+    """
+    filename = 'README.md'
+    exists = False
+    for file in os.listdir(working_dir):
+        if file.lower() == 'readme.md':
+            filename = file
+            exists = True
+    return filename, f'{working_dir}/{filename}', exists
+
+
 def update_readme(badges, repo, working_dir):
     """ update readme with badges
     """
-    filename = f'{working_dir}/README.md'
+    short_filename, filename, exists = get_readme(working_dir)
     logger.debug(f'executing step - updating {filename} with badges')
-    if os.path.isfile(filename):
+    if exists:
         with open(filename, 'r') as infile:
             contents = infile.readlines()
-        index = get_heading_index(contents[0], repo)
-        contents.insert(index + 1, f'{badges}\n')
+        # index = get_heading_index(contents[0], repo)
+        # contents.insert(index + 1, ' '.join(badges))
+        contents.insert(1, ' '.join(badges))
+        contents.insert(2, '\n\n')
         with open(filename, 'w') as outfile:
             outfile.writelines(contents)
     else:
+        logger.debug(f'creating new {filename}')
         with open(filename, 'w') as outfile:
             outfile.write(f'# {repo}\n')
-            outfile.write(f'{badges}\n')
-        command = 'git add README.md'
-        logger.debug(command)
-        subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for badge in badges:
+                outfile.write(f'{badge} ')
+            outfile.write('\n')
+        command_git_add = f'git add {short_filename}'
+        logger.debug(f'{command_git_add} - ({working_dir})')
+        subprocess.run(command_git_add, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def create_commit(repo, repo_ssh_url, badges):
     """ execute steps to clone update commit and push changes on repo
     """
+    sleep(.1)
     working_dir = f"{getenv('PWD')}/github.com"
-    command = f'mkdir -p {working_dir}'
-    logger.debug(f'executing step - {command}')
-    subprocess.run(command, shell=True)
+    command_mk = f'mkdir -p {working_dir}'
+    logger.debug(f'executing step - {command_mk}')
+    subprocess.run(command_mk, shell=True)
 
-    command = f'rm -rf {working_dir}/{repo}'
-    logger.debug(f'executing step - {command}')
-    subprocess.run(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sleep(.1)
+    command_rm = f'rm -rf {working_dir}/{repo}'
+    logger.debug(f'executing step - {command_rm}')
+    subprocess.run(command_rm, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    command = f'git clone {repo_ssh_url}'
-    logger.debug(f'executing step - {command}')
-    subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sleep(.1)
+    command_git_clone = f'git clone {repo_ssh_url}'
+    logger.debug(f'executing step - {command_git_clone} - ({working_dir})')
+    subprocess.run(command_git_clone, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    sleep(.1)
     working_dir = f'{working_dir}/{repo}'
     update_readme(badges, repo, working_dir)
 
-    command = "git commit -am 'Add badges to readme' -s"
-    logger.debug(f'executing step - {command}')
-    subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sleep(.1)
+    command_git_commit = "git commit -am 'Add badges to readme' -s"
+    logger.debug(f'executing step - {command_git_commit} - ({working_dir})')
+    subprocess.run(command_git_commit, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    command = 'git push origin master'
-    logger.debug(f'executing step - {command}')
-    subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sleep(.1)
+    command_git_push = 'git push origin master'
+    logger.debug(f'executing step - {command_git_push} - ({working_dir})')
+    subprocess.run(command_git_push, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def pull_request_exists(client, owner_repo, user):
@@ -343,15 +367,22 @@ def create_pull_request_workflow(*args):
     """ create pull rquest workflow for given owner_repo
     """
     owner_repo = args[0]['owner_repo']
-    reviewers = args[0]['reviewers']
     badges = args[0]['badges']
+    # reviewers = args[0]['reviewers']
+    # labels = args[0]['labels']
+    # milestone = args[0]['milestone']
 
     logger.debug(f'creating pull request workflow for {owner_repo}')
     logger.debug('pull request workflow has a total of 12 steps')
+
     client, user = get_client()
-    if not pull_request_exists(client, owner_repo, user):
-        repo, repo_url = create_fork(client, owner_repo, user)
-        create_commit(repo, repo_url, badges)
-        pull_number = create_pull_request(client, owner_repo, user)
-        verify_pull_request(client, owner_repo, pull_number)
-        update_pull_request(client, owner_repo, pull_number, reviewers, [user], ['documentation'], 'Ireland')
+
+    if pull_request_exists(client, owner_repo, user):
+        return
+
+    sleep(random.randint(1, 7))
+    repo, repo_url = create_fork(client, owner_repo, user)
+    create_commit(repo, repo_url, badges)
+    # pull_number = create_pull_request(client, owner_repo, user)
+    # verify_pull_request(client, owner_repo, pull_number)
+    # update_pull_request(client, owner_repo, pull_number, reviewers, [user], labels, milestone)
