@@ -1,20 +1,45 @@
+import re
 import json
 import logging
+import argparse
 from os import getenv
 from time import sleep
 
-from rest3client import RESTclient 
+from rest3client import RESTclient
 from github3api import GitHubAPI
 from mp4ansi import MP4ansi
 from mdutils import MdUtils
 
-import github
+from prepbadge.github import get_client as get_github_client
+from prepbadge.github import create_pull_request_workflow
 
 logger = logging.getLogger(__name__)
 
 
 CODECOV_HOST = 'codecov.io'
 JENKINS_HOST = 'jenkins.edgexfoundry.org'
+
+
+def get_parser():
+    """ return argument parser
+    """
+    parser = argparse.ArgumentParser(
+        description='A CLI to create pull request workflows for updating edgeXfoundry repos with badges')
+    parser.add_argument(
+        '--org',
+        dest='org',
+        type=str,
+        default=getenv('GH_ORG'),
+        required=False,
+        help='GitHub organization containing repos to process')
+    parser.add_argument(
+        '--repos',
+        dest='repos_regex',
+        type=str,
+        default=None,
+        required=False,
+        help='a regex to match name of repos to include for processing, if not specified then all non-archived, non-disabled repos in org will be processed')
+    return parser
 
 
 def configure_logging():
@@ -30,22 +55,13 @@ def configure_logging():
     rootLogger.addHandler(file_handler)
 
 
-def get_github_client():
-    """ return instance of RESTclient for codecov.io
-    """
-    token = getenv('GH_TOKEN_PSW')
-    if not token:
-        raise ValueError('GH_TOKEN_PSW environment variable must be set to token')
-    return GitHubAPI.get_client()
-
-
 def get_github_data(*args):
     """ return non-archived and non-disabled github repos for owner
     """
     owner = args[0]['owner']
     logger.debug(f'getting github information for {owner} repos')
     repos = []
-    client = get_github_client()
+    client, _ = get_github_client()
     all_repos = client.get(f'/orgs/{owner}/repos', _get='all', _attributes=['name', 'full_name', 'archived', 'disabled', 'languages_url', 'html_url', 'license', 'tags_url'])
     attributes = {'archived': False, 'disabled': False}
     logger.debug(f'{owner} has a total of {len(all_repos)} matching repos in github')
@@ -206,6 +222,7 @@ def add_badges(github, owner):
         repo['badges'].append(f"[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/{repo['owner_repo']})]({repo['github_url']}/pulls)")
         repo['badges'].append(f"[![GitHub Contributors](https://img.shields.io/github/contributors/{repo['owner_repo']})]({repo['github_url']}/contributors)")
         repo['badges'].append(f"[![GitHub Commit Activity](https://img.shields.io/github/commit-activity/m/{repo['owner_repo']})]({repo['github_url']}/commits)")
+    # write_file(github, 'badges')
 
 
 def run_github_data_collection(owner):
@@ -268,40 +285,59 @@ def run_jenkins_data_collection(owner):
     return process_data
 
 
-def main(owner):
+def get_process_data_for_pull_request_workflows(repos_data, repos_regex):
+    """ return process data for pull request workflows
+    """
+    logger.debug('getting process data for pull request workflows')
+    if repos_regex is None:
+        repos_regex = '-'
+    process_data = []
+    for repo_data in repos_data:
+        match = re.match(repos_regex, repo_data['name'])
+        if match:
+            item = {
+                'owner_repo': repo_data['owner_repo'],
+                'reviewers': [],
+                # 'reviewers': ['bill-mahoney', 'ernestojeda', 'jamesrgregg', 'cjoyv']
+                'badges': repo_data['badges']
+            }
+            process_data.append(item)
+    return process_data
+
+
+def run_create_pull_request_workflows(owner, repos_data, repos_regex):
+    """ execute pull request workflow
+    """
+    print(f'Executing pull request workflows for {owner} ...')
+    process_data = get_process_data_for_pull_request_workflows(repos_data, repos_regex)
+    MP4ansi(
+        function=create_pull_request_workflow,
+        process_data=process_data,
+        config={
+            'id_regex': fr'^creating pull request workflow for {owner}/(?P<value>.*)$',
+            'id_justify': True,
+            'id_width': 23,
+            'progress_bar': {
+                'total': r'^pull request workflow has a total of (?P<value>\d+) steps$',
+                'count_regex': r'^executing step (?P<value>-) .*$',
+                'progress_message': 'Pull request workflow complete'
+            }
+        }).execute(raise_if_error=True)
+
+
+def main():
     """ main function
     """
+    args = get_parser().parse_args()
     configure_logging()
-    github_data = run_github_data_collection(owner)
-    codecov_data = run_codecov_data_collection(owner)
-    jenkins_data = run_jenkins_data_collection(owner)
+    github_data = run_github_data_collection(args.org)
+    codecov_data = run_codecov_data_collection(args.org)
+    jenkins_data = run_jenkins_data_collection(args.org)
     coalesce_data(github_data, codecov_data, jenkins_data)
-    add_badges(github_data, owner)
-    create_markdown(github_data, owner)
-
-    index = find(github_data[0]['result'], 'sample-service')
-    badges = ' '.join(github_data[0]['result'][index]['badges'])
-    print(badges)
-
-    user = 'soda480'
-    owner_repo = 'edgexfoundry/sample-service'
-    user_repo = f'{user}/sample-service'
-    reviewers = ['bill-mahoney', 'ernestojeda', 'jamesrgregg']
-
-    client = get_github_client()
-
-    # github.fork_exists(client, owner_repo, user)
-    print('Creating fork')
-    github.create_fork(client, owner_repo, user)
-    print('Creating commit')
-    github.create_commit(client, user_repo, badges)
-    # print('Creating pull request')
-    # pull_number = github.create_pull_request(client, owner_repo, user)
-    # print('Verifying pull request')
-    # github.verify_pull_request(client, owner_repo, pull_number)
-    # print('Add reviewers to pull request')
-    # github.update_pull_request(client, owner_repo, pull_number, reviewers)
+    add_badges(github_data, args.org)
+    create_markdown(github_data, args.org)
+    run_create_pull_request_workflows(args.org, github_data[0]['result'], args.repos_regex)
 
 
 if __name__ == '__main__':
-    main('edgexfoundry')
+    main()

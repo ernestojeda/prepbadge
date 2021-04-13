@@ -2,9 +2,14 @@ import re
 import base64
 import logging
 import subprocess
+import os.path
+from os import getenv
 from time import sleep
 from datetime import datetime
 from requests.exceptions import HTTPError
+
+from github3api import GitHubAPI
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +32,17 @@ class NotFound(Exception):
     pass
 
 
+def get_client():
+    """ return instance of RESTclient for codecov.io
+    """
+    token = getenv('GH_TOKEN_PSW')
+    if not token:
+        raise ValueError('GH_TOKEN_PSW environment variable must be set to token')
+    client = GitHubAPI.get_client()
+    user = client.get('/user')['login']
+    return client, user
+
+
 def fork_exists(client, owner_repo, user):
     """ return True if fork for owner_repo exists
     """
@@ -44,7 +60,7 @@ def fork_exists(client, owner_repo, user):
 def create_fork(client, owner_repo, user, sleep_time=None):
     """ create fork for repo
     """
-    logger.debug(f'creating fork for {owner_repo}')
+    logger.debug(f'executing step - creating fork for {owner_repo}')
     if fork_exists(client, owner_repo, user):
         raise ForkExists(f'a fork for {owner_repo} already exists for {user}')
 
@@ -63,16 +79,18 @@ def create_fork(client, owner_repo, user, sleep_time=None):
             logger.debug(f'fork for {owner_repo} is not yet ready')
             sleep(sleep_time)
 
+    return response['name'], response['ssh_url']
+
 
 def create_pull_request(client, owner_repo, user):
     """ create pull request
     """
-    logger.debug(f'creating pull request for {owner_repo}')
+    logger.debug(f'executing step - creating pull request for {owner_repo}')
     response = client.post(
         f'/repos/{owner_repo}/pulls',
         json={
-            'title': 'this is a test - ignore',
-            'body': 'created via automation. this is a test - ignore',
+            'title': 'docs: Add badges to readme',
+            'body': 'Add relevant badges to readme',
             'draft': True,
             'base': 'master',
             'head': f'{user}:master'
@@ -83,7 +101,7 @@ def create_pull_request(client, owner_repo, user):
 def verify_pull_request(client, owner_repo, pull_number):
     """ verify pull request
     """
-    logger.debug(f'verifying {owner_repo} pull request {pull_number}')
+    logger.debug(f'executing step - verifying {owner_repo} pull request {pull_number}')
     response = client.get(f'/repos/{owner_repo}/pulls/{pull_number}/files')
     if len(response) == 1:
         if response[0]['filename'] == 'README.md':
@@ -94,15 +112,23 @@ def verify_pull_request(client, owner_repo, pull_number):
         raise PullRequestVerificationFailure(f'{owner_repo} pull request for {pull_number} files verification failure')
 
 
-def update_pull_request(client, owner_repo, pull_number, reviewers):
+def update_pull_request(client, owner_repo, pull_number, reviewers, assignees, labels, milestone_title):
     """ add reviewers to pull request
     """
-    logger.debug(f'adding reviewers to {owner_repo} pull request {pull_number}')
+    logger.debug(f'executing step - adding reviewers {reviewers} to {owner_repo} pull request {pull_number}')
     client.post(
         f'/repos/{owner_repo}/pulls/{pull_number}/requested_reviewers',
-        json={
-            'reviewers': reviewers
-        })
+        json={'reviewers': reviewers})
+
+    milestones = client.get(f'/repos/{owner_repo}/milestones')
+    _, milestone = find(milestones, 'title', milestone_title)
+    milestone_number = None
+    if milestone:
+        milestone_number = milestone['number']
+    logger.debug(f'executing step - adding assignees {assignees} labels {labels} and milestone {milestone_title} to {owner_repo} pull request {pull_number}')
+    client.patch(
+        f'/repos/{owner_repo}/issues/{pull_number}',
+        json={'assignees': assignees, 'milestone': milestone_number, 'labels': labels})
 
 
 def create_commit2(client, user_repo, badges):
@@ -188,11 +214,11 @@ def update_readme2(client, current_tree, user_repo, badges):
     logger.debug('getting blob for readme')
     endpoint_get_blob = item['url'].replace(f'https://{client.hostname}', '')
     current_blob = client.get(endpoint_get_blob)
-    
+
     # get contents of readme file
     content = base64.b64decode(current_blob['content']).decode()
     contents = content.split('\n')
-    
+
     # update readme contents
     logger.debug('updating readme contents with badges')
     repo = user_repo.split('/')[-1]
@@ -248,36 +274,84 @@ def add_signature(payload, user_repo):
     logger.debug(f'signature: {signature}')
 
 
-def update_readme(badges, filename):
+def update_readme(badges, repo, working_dir):
     """ update readme with badges
     """
-    logger.debug(f'updating {filename} with badges')
-    with open(filename, 'r') as infile:
-        contents = infile.readlines()
-    index = get_heading_index(contents[0], repo)
-    contents.insert(index + 1, badges)
-    with open(filename, 'w') as outfile:
-        outfile.writelines(contents)
+    filename = f'{working_dir}/README.md'
+    logger.debug(f'executing step - updating {filename} with badges')
+    if os.path.isfile(filename):
+        with open(filename, 'r') as infile:
+            contents = infile.readlines()
+        index = get_heading_index(contents[0], repo)
+        contents.insert(index + 1, f'{badges}\n')
+        with open(filename, 'w') as outfile:
+            outfile.writelines(contents)
+    else:
+        with open(filename, 'w') as outfile:
+            outfile.write(f'# {repo}\n')
+            outfile.write(f'{badges}\n')
+        command = 'git add README.md'
+        logger.debug(command)
+        subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def create_commit(repo, repo_url, badges):
+def create_commit(repo, repo_ssh_url, badges):
     """ execute steps to clone update commit and push changes on repo
     """
-    working_dir = '/prebadge/github.com'
+    working_dir = f"{getenv('PWD')}/github.com"
     command = f'mkdir -p {working_dir}'
-    subprocess.run(command)
+    logger.debug(f'executing step - {command}')
+    subprocess.run(command, shell=True)
 
-    command = f'git clone {repo_url}'
-    logger.debug(f'{command} [{working_dir}]')
-    subprocess.run(command, cwd=working_dir)
+    command = f'rm -rf {working_dir}/{repo}'
+    logger.debug(f'executing step - {command}')
+    subprocess.run(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    command = f'git clone {repo_ssh_url}'
+    logger.debug(f'executing step - {command}')
+    subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     working_dir = f'{working_dir}/{repo}'
-    update_readme(badges, f'{working_dir}/README.md')
+    update_readme(badges, repo, working_dir)
 
-    command = f"git commit -am 'Add badges to readme' -s"
-    logger.debug(f'{command} [{working_dir}]')
-    subprocess.run(command, cwd=working_dir)
+    command = "git commit -am 'Add badges to readme' -s"
+    logger.debug(f'executing step - {command}')
+    subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     command = 'git push origin master'
-    logger.debug(f'{command} [{workingdir}]')
-    subprocess.run(command, cwd=working_dir)
+    logger.debug(f'executing step - {command}')
+    subprocess.run(command, cwd=working_dir, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def pull_request_exists(client, owner_repo, user):
+    """ return True if open pull request exists
+    """
+    exists = False
+    logger.debug(f'executing step - checking if pull request for {owner_repo} at {user} exists')
+    response = client.get(f'/repos/{owner_repo}/pulls?state=open&head={user}:master&base=master')
+    if response:
+        logger.debug(f'An open pull request for {owner_repo} at {user} already exists')
+        # need to find a better way of updating progress bar completion
+        # but this will do for now
+        for _ in range(11):
+            logger.debug('executing step - update progress bar to completion')
+        exists = True
+    return exists
+
+
+def create_pull_request_workflow(*args):
+    """ create pull rquest workflow for given owner_repo
+    """
+    owner_repo = args[0]['owner_repo']
+    reviewers = args[0]['reviewers']
+    badges = args[0]['badges']
+
+    logger.debug(f'creating pull request workflow for {owner_repo}')
+    logger.debug('pull request workflow has a total of 12 steps')
+    client, user = get_client()
+    if not pull_request_exists(client, owner_repo, user):
+        repo, repo_url = create_fork(client, owner_repo, user)
+        create_commit(repo, repo_url, badges)
+        pull_number = create_pull_request(client, owner_repo, user)
+        verify_pull_request(client, owner_repo, pull_number)
+        update_pull_request(client, owner_repo, pull_number, reviewers, [user], ['documentation'], 'Ireland')
