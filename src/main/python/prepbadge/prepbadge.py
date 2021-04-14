@@ -92,7 +92,7 @@ def get_codecov_client():
     token = getenv('CC_TOKEN_PSW')
     if not token:
         raise ValueError('CC_TOKEN_PSW environment variable must be set to token')
-    return RESTclient(CODECOV_HOST, token=token)
+    return RESTclient(CODECOV_HOST, token=token, retries=[{'wait_fixed': 5000, 'stop_max_attempt_number': 3}])
 
 
 def get_codecov_data(*args):
